@@ -1,0 +1,115 @@
+---
+title: 'Avito'
+author: 'Konstantin Ivanin'
+date: '8 октября 2017 г '
+output: html_document
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = 'docs')})
+
+---
+
+# Анализ данных с сайта Avito по недвижимости
+Логика работы следующая:
+
+* Делаем поиск по аренде квартир с необходимыми параметрами.
+* Копируем `url` в переменную.
+* Смотрим сколько страниц в выдаче и записываем в другую переменную.
+* Перебираем в цикле все страницы в выдаче и сохраняем необходимые поля в `tibble`.
+* Делаем аналогичный поиск для продажи квартир и сохраняем результаты в другой `tibble`.
+* Для каждой квартиры, выставленной на продажу, считаем её `scoring` относительно аренды.
+* Сортируем по `scoring`'у и сохраняем результат для дальнейшего анализа.
+
+Загрузим необходимые библиотеки
+
+```{r, message=FALSE}
+library(tidyverse)
+library(rvest)
+library(stringr)
+library(magrittr)
+```
+
+## Данные по аренде
+Сформируем запрос на Avito по аренде однокомнатных квартир на длительный срок. Полученный `url` сохраним в переменной. Перебирать страницы выдачи будем рандомно. Задержка между переходами - 4 секунды.
+
+```{r}
+search.url <- 'https://www.avito.ru/moskovskaya_oblast/kvartiry/sdam/na_dlitelnyy_srok/1-komnatnye?p=page&pmax=999999&pmin=1&view=list'
+pages.num <- 5 # 90 страниц в выдаче
+pages <- sample(1:pages.num, pages.num)
+result <- list()
+count <- 1
+delay <- 3
+
+for (i in pages) {
+  url.page <- str_replace(search.url, 'page', as.character(i))
+  avito <- read_html(url.page)
+  
+  floor <-
+    avito %>%
+    html_nodes('.floor') %>%
+    html_text() %>%
+    str_trim() %>%
+    str_replace(' эт.', '')
+  
+  link <-
+    avito %>%
+    html_nodes('.description-title-link') %>%
+    html_attr('href')
+  link <- paste0('https://www.avito.ru', link) 
+  
+  area <-
+    avito %>%
+    html_nodes('.area') %>%
+    html_text() %>%
+    str_trim() %>%
+    str_split(' ', simplify = T)
+  area <- as.numeric(area[, 1])
+  
+  city <-
+    avito %>%
+    html_nodes('.data-chunk') %>%
+    html_text() %>%
+    str_trim()
+  
+  price <-
+    avito %>%
+    html_nodes('.price') %>%
+    html_text() %>%
+    str_trim()
+  price <- as.numeric(gsub('[^[:digit:]]', '', price))
+  
+  
+  result[[i]] <- tibble(Floor = floor, Area = area, City = city, Price = price, Link = link)
+  Sys.sleep(delay)
+  
+  if (count == 1 | count %% 10 == 0 | count == pages.num)
+    print(paste('Rent, page', count, 'of', length(pages)))
+  count <- count + 1
+}
+
+rent.data <- data.table::rbindlist(result)
+```
+
+Удалим неиспользуемые переменные
+
+```{r}
+rm(area, avito, city, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)
+```
+
+
+Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, посчитаем цену за кв.метр.
+
+```{r}
+rent.data <- separate(rent.data, Floor, c('Floor', 'FloorAll'), '/', convert = T)
+rent.data %<>% 
+  mutate(PriceBySquare = Price / Area)
+```
+
+
+
+
+
+
+
+
+
+
