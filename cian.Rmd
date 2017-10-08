@@ -1,13 +1,13 @@
 ---
-title: 'Avito'
-author: 'Konstantin Ivanin'
+title: "Cian"
+author: "Konstantin Ivanin"
 date: '8 октября 2017 г '
 output: html_document
 knit: (function(inputFile, encoding) {
   rmarkdown::render(inputFile, encoding = encoding, output_dir = 'docs')})
 ---
 
-# Анализ данных с сайта Avito.ru по недвижимости
+# Анализ данных с сайта Cian.ru по недвижимости
 Логика работы следующая:
 
 * Делаем поиск по аренде квартир с необходимыми параметрами.
@@ -28,11 +28,11 @@ library(magrittr)
 ```
 
 ## Данные по аренде
-Сформируем запрос на Avito по аренде однокомнатных квартир на длительный срок. Полученный `url` сохраним в переменной. Перебирать страницы выдачи будем рандомно. Задержка между переходами - 3 секунды.
+Сформируем запрос на Cian по аренде однокомнатных квартир на длительный срок. Полученный `url` сохраним в переменной. Перебирать страницы выдачи будем рандомно. Задержка между переходами - 3 секунды.
 
 ```{r}
-search.url <- 'https://www.avito.ru/moskovskaya_oblast/kvartiry/sdam/na_dlitelnyy_srok/1-komnatnye?p=page&pmax=999999&pmin=1&view=list'
-pages.num <- 90 # 90 страниц в выдаче
+search.url <- 'https://www.cian.ru/cat.php?currency=2&deal_type=rent&engine_version=2&maxprice=999999&minprice=1&offer_type=flat&p=page&region=4593&room1=1&type=4'
+pages.num <- 60 # 60 страниц в выдаче
 pages <- sample(1:pages.num, pages.num)
 result <- list()
 count <- 1
@@ -40,45 +40,44 @@ delay <- 3
 
 for (i in pages) {
   url.page <- str_replace(search.url, 'page', as.character(i))
-  avito <- read_html(url.page)
+  cian <- read_html(url.page)
   
   floor <-
-    avito %>%
-    html_nodes('.floor') %>%
-    html_text() %>%
-    str_trim() %>%
-    str_replace(' эт.', '')
-  
-  link <-
-    avito %>%
-    html_nodes('.description-title-link') %>%
-    html_attr('href')
-  link <- paste0('https://www.avito.ru', link) 
-  
-  area <-
-    avito %>%
-    html_nodes('.area') %>%
-    html_text() %>%
-    str_trim() %>%
-    str_split(' ', simplify = T)
-  area <- as.numeric(area[, 1])
-  
-  city <-
-    avito %>%
-    html_nodes('.data-chunk') %>%
+    cian %>%
+    html_nodes('.header--1ZTfS') %>%
     html_text() %>%
     str_trim()
   
-  price <-
-    avito %>%
-    html_nodes('.price') %>%
+  link <-
+    cian %>%
+    html_nodes('.cardLink--3KbME') %>%
+    html_attr('href')
+  
+  area <-
+    cian %>%
+    html_nodes('.header--1WFWC') %>%
     html_text() %>%
     str_trim() %>% 
     gsub('[^[:digit:]]', '', .) %>% 
     str_trim() %>% 
     as.numeric()
   
-  result[[i]] <- tibble(Floor = floor, Area = area, City = city, Price = price, Link = link)
+  address <-
+    cian %>%
+    html_nodes('.address-path--12tl2') %>%
+    html_text() %>%
+    str_trim()
+  
+  price <-
+    cian %>%
+    html_nodes('.header--2lxlC') %>%
+    html_text() %>%
+    str_trim() %>% 
+    gsub('[^[:digit:]]', '', .) %>% 
+    str_trim() %>% 
+    as.numeric()
+  
+  result[[i]] <- tibble(Floor = floor, Link = link, Area = area, Address = address, Price = price)
   Sys.sleep(delay)
   
   if (count == 1 | count %% 10 == 0 | count == pages.num)
@@ -92,22 +91,28 @@ rent.data <- data.table::rbindlist(result)
 Удалим неиспользуемые переменные
 
 ```{r}
-rm(area, avito, city, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)
+rm(area, cian, address, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)
 ```
 
-Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, посчитаем цену за кв.метр.
+
+Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, попробуем выделить город из полного адреса (исходим из того, что формат адреса - область, район, город), посчитаем цену за кв.метр.
 
 ```{r}
-rent.data <- separate(rent.data, Floor, c('Floor', 'FloorAll'), '/', convert = T)
+rent.data <- separate(rent.data, Floor, c('Floor', 'FloorAll'), ' этаж из ', convert = T)
 rent.data %<>% 
-  mutate(PriceBySquare = Price / Area)
+  mutate(PriceBySquare = Price / Area) %>% 
+  mutate(City = str_trim(str_split(Address, ',', simplify = T)[, 3]))
 ```
 
 Сохраним данные в `csv` формате
 
 ```{r, message=FALSE}
-write_csv(rent.data, 'data/avito_rent.csv')
+write_csv(rent.data, 'data/cian_rent.csv')
 ```
+
+
+
+
 
 
 

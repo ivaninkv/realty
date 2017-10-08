@@ -123,8 +123,8 @@ $(document).ready(function () {
 </div>
 
 
-<div id="----avito--" class="section level1">
-<h1>Анализ данных с сайта Avito по недвижимости</h1>
+<div id="----avito.ru--" class="section level1">
+<h1>Анализ данных с сайта Avito.ru по недвижимости</h1>
 <p>Логика работы следующая:</p>
 <ul>
 <li>Делаем поиск по аренде квартир с необходимыми параметрами.</li>
@@ -142,9 +142,9 @@ library(stringr)
 library(magrittr)</code></pre>
 <div id="--" class="section level2">
 <h2>Данные по аренде</h2>
-<p>Сформируем запрос на Avito по аренде однокомнатных квартир на длительный срок. Полученный <code>url</code> сохраним в переменной. Перебирать страницы выдачи будем рандомно. Задержка между переходами - 4 секунды.</p>
+<p>Сформируем запрос на Avito по аренде однокомнатных квартир на длительный срок. Полученный <code>url</code> сохраним в переменной. Перебирать страницы выдачи будем рандомно. Задержка между переходами - 3 секунды.</p>
 <pre class="r"><code>search.url &lt;- 'https://www.avito.ru/moskovskaya_oblast/kvartiry/sdam/na_dlitelnyy_srok/1-komnatnye?p=page&amp;pmax=999999&amp;pmin=1&amp;view=list'
-pages.num &lt;- 5 # 90 страниц в выдаче
+pages.num &lt;- 90 # 90 страниц в выдаче
 pages &lt;- sample(1:pages.num, pages.num)
 result &lt;- list()
 count &lt;- 1
@@ -185,9 +185,10 @@ for (i in pages) {
     avito %&gt;%
     html_nodes('.price') %&gt;%
     html_text() %&gt;%
-    str_trim()
-  price &lt;- as.numeric(gsub('[^[:digit:]]', '', price))
-  
+    str_trim() %&gt;% 
+    gsub('[^[:digit:]]', '', .) %&gt;% 
+    str_trim() %&gt;% 
+    as.numeric()
   
   result[[i]] &lt;- tibble(Floor = floor, Area = area, City = city, Price = price, Link = link)
   Sys.sleep(delay)
@@ -196,8 +197,16 @@ for (i in pages) {
     print(paste('Rent, page', count, 'of', length(pages)))
   count &lt;- count + 1
 }</code></pre>
-<pre><code>## [1] &quot;Rent, page 1 of 5&quot;
-## [1] &quot;Rent, page 5 of 5&quot;</code></pre>
+<pre><code>## [1] &quot;Rent, page 1 of 90&quot;
+## [1] &quot;Rent, page 10 of 90&quot;
+## [1] &quot;Rent, page 20 of 90&quot;
+## [1] &quot;Rent, page 30 of 90&quot;
+## [1] &quot;Rent, page 40 of 90&quot;
+## [1] &quot;Rent, page 50 of 90&quot;
+## [1] &quot;Rent, page 60 of 90&quot;
+## [1] &quot;Rent, page 70 of 90&quot;
+## [1] &quot;Rent, page 80 of 90&quot;
+## [1] &quot;Rent, page 90 of 90&quot;</code></pre>
 <pre class="r"><code>rent.data &lt;- data.table::rbindlist(result)</code></pre>
 <p>Удалим неиспользуемые переменные</p>
 <pre class="r"><code>rm(area, avito, city, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)</code></pre>
@@ -205,6 +214,8 @@ for (i in pages) {
 <pre class="r"><code>rent.data &lt;- separate(rent.data, Floor, c('Floor', 'FloorAll'), '/', convert = T)
 rent.data %&lt;&gt;% 
   mutate(PriceBySquare = Price / Area)</code></pre>
+<p>Сохраним данные в <code>csv</code> формате</p>
+<pre class="r"><code>write_csv(rent.data, 'data/avito_rent.csv')</code></pre>
 </div>
 </div>
 
