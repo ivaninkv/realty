@@ -32,7 +32,7 @@ library(magrittr)
 
 ```{r}
 search.url <- 'https://www.avito.ru/moskovskaya_oblast/kvartiry/sdam/na_dlitelnyy_srok/1-komnatnye?p=page&pmax=999999&pmin=1&view=list'
-pages.num <- 90 # 90 страниц в выдаче
+pages.num <- 88 # 88 страниц в выдаче
 pages <- sample(1:pages.num, pages.num)
 result <- list()
 count <- 1
@@ -101,6 +101,7 @@ rm(area, avito, city, count, delay, floor, i, link, pages, pages.num, price, sea
 rent.data <- separate(rent.data, Floor, c('Floor', 'FloorAll'), '/', convert = T)
 rent.data %<>% 
   mutate(PriceBySquare = Price / Area)
+glimpse(rent.data)
 ```
 
 Сохраним данные в `csv` формате
@@ -109,10 +110,91 @@ rent.data %<>%
 write_csv(rent.data, 'data/avito_rent.csv')
 ```
 
+## Данные по продаже
+Сделаем аналогичные загрузку и преобразования для продажи квартир
 
+```{r}
+search.url <- 'https://www.avito.ru/moskovskaya_oblast/kvartiry/prodam/1-komnatnye?p=page&pmax=2000000&pmin=1&view=list'
+pages.num <- 61 # 61 страница в выдаче
+pages <- sample(1:pages.num, pages.num)
+result <- list()
+count <- 1
+delay <- 3
 
+for (i in pages) {
+  url.page <- str_replace(search.url, 'page', as.character(i))
+  avito <- read_html(url.page)
+  
+  floor <-
+    avito %>%
+    html_nodes('.floor') %>%
+    html_text() %>%
+    str_trim() %>%
+    str_replace(' эт.', '')
+  
+  link <-
+    avito %>%
+    html_nodes('.description-title-link') %>%
+    html_attr('href') %>% 
+    paste0('https://www.avito.ru', .) 
+  
+  area <-
+    avito %>%
+    html_nodes('.area') %>%
+    html_text() %>%
+    str_trim() %>%
+    str_split(' ', simplify = T)
+  area <- as.numeric(area[, 1])
+  
+  city <-
+    avito %>%
+    html_nodes('.data-chunk') %>%
+    html_text() %>%
+    str_trim()
+  
+  price <-
+    avito %>%
+    html_nodes('.price') %>%
+    html_text() %>%
+    str_trim() %>% 
+    gsub('[^[:digit:]]', '', .) %>% 
+    str_trim() %>% 
+    as.numeric()
+  
+  result[[i]] <- tibble(Floor = floor, Area = area, City = city, Price = price, Link = link)
+  Sys.sleep(delay)
+  
+  if (count == 1 | count %% 10 == 0 | count == pages.num)
+    print(paste('Rent, page', count, 'of', length(pages)))
+  count <- count + 1
+}
 
+sale.data <- data.table::rbindlist(result)
+```
 
+Удалим неиспользуемые переменные
+
+```{r}
+rm(area, avito, city, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)
+```
+
+Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, посчитаем цену за кв.метр.
+
+```{r}
+sale.data <- separate(sale.data, Floor, c('Floor', 'FloorAll'), '/', convert = T)
+sale.data %<>% 
+  mutate(PriceBySquare = Price / Area)
+glimpse(sale.data)
+```
+
+Сохраним данные в `csv` формате
+
+```{r, message=FALSE}
+write_csv(sale.data, 'data/avito_sale.csv')
+```
+
+## Проанализируем полученные данные
+Приджоним данные по аренде к табличке с продажами и посчитаем `scoring`.
 
 
 

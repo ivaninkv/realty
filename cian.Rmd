@@ -36,7 +36,7 @@ pages.num <- 60 # 60 страниц в выдаче
 pages <- sample(1:pages.num, pages.num)
 result <- list()
 count <- 1
-delay <- 3
+delay <- 0
 
 for (i in pages) {
   url.page <- str_replace(search.url, 'page', as.character(i))
@@ -94,7 +94,6 @@ rent.data <- data.table::rbindlist(result)
 rm(area, cian, address, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)
 ```
 
-
 Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, попробуем выделить город из полного адреса (исходим из того, что формат адреса - область, район, город), посчитаем цену за кв.метр.
 
 ```{r}
@@ -102,6 +101,7 @@ rent.data <- separate(rent.data, Floor, c('Floor', 'FloorAll'), ' этаж из 
 rent.data %<>% 
   mutate(PriceBySquare = Price / Area) %>% 
   mutate(City = str_trim(str_split(Address, ',', simplify = T)[, 3]))
+glimpse(rent.data)
 ```
 
 Сохраним данные в `csv` формате
@@ -110,8 +110,88 @@ rent.data %<>%
 write_csv(rent.data, 'data/cian_rent.csv')
 ```
 
+## Данные по продаже
+Сделаем аналогичные загрузку и преобразования для продажи квартир
 
+```{r}
+search.url <- 'https://www.cian.ru/cat.php?currency=2&deal_type=sale&engine_version=2&maxprice=2000000&minprice=1&offer_type=flat&p=page&region=4593&room1=1'
+pages.num <- 60 # 60 страниц в выдаче
+pages <- sample(1:pages.num, pages.num)
+result <- list()
+count <- 1
+delay <- 0
 
+for (i in pages) {
+  url.page <- str_replace(search.url, 'page', as.character(i))
+  cian <- read_html(url.page)
+  
+  floor <-
+    cian %>%
+    html_nodes('.header--1ZTfS') %>%
+    html_text() %>%
+    str_trim()
+  
+  link <-
+    cian %>%
+    html_nodes('.cardLink--3KbME') %>%
+    html_attr('href')
+  
+  area <-
+    cian %>%
+    html_nodes('.header--1WFWC') %>%
+    html_text() %>%
+    str_trim() %>% 
+    gsub('[^[:digit:]]', '', .) %>% 
+    str_trim() %>% 
+    as.numeric()
+  
+  address <-
+    cian %>%
+    html_nodes('.address-path--12tl2') %>%
+    html_text() %>%
+    str_trim()
+  
+  price <-
+    cian %>%
+    html_nodes('.header--2lxlC') %>%
+    html_text() %>%
+    str_trim() %>% 
+    gsub('[^[:digit:]]', '', .) %>% 
+    str_trim() %>% 
+    as.numeric()
+  
+  result[[i]] <- tibble(Floor = floor, Link = link, Area = area, Address = address, Price = price)
+  Sys.sleep(delay)
+  
+  if (count == 1 | count %% 10 == 0 | count == pages.num)
+    print(paste('Rent, page', count, 'of', length(pages)))
+  count <- count + 1
+}
+
+sale.data <- data.table::rbindlist(result)
+```
+
+Удалим неиспользуемые переменные
+
+```{r}
+rm(area, cian, address, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)
+```
+
+Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, попробуем выделить город из полного адреса (исходим из того, что формат адреса - область, район, город), посчитаем цену за кв.метр.
+
+```{r}
+sale.data <- separate(sale.data, Floor, c('Floor', 'FloorAll'), ' этаж из ', convert = T)
+sale.data %<>% 
+  mutate(PriceBySquare = Price / Area) %>% 
+  mutate(City = str_trim(str_split(Address, ',', simplify = T)[, 3]))
+glimpse(sale.data)
+```
+
+Сохраним данные в `csv` формате
+
+```{r, message=FALSE}
+write_csv(sale.data, 'data/cian_sale.csv')
+```
 
 
 

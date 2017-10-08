@@ -148,7 +148,7 @@ pages.num &lt;- 60 # 60 страниц в выдаче
 pages &lt;- sample(1:pages.num, pages.num)
 result &lt;- list()
 count &lt;- 1
-delay &lt;- 3
+delay &lt;- 0
 
 for (i in pages) {
   url.page &lt;- str_replace(search.url, 'page', as.character(i))
@@ -210,9 +210,106 @@ for (i in pages) {
 <pre class="r"><code>rent.data &lt;- separate(rent.data, Floor, c('Floor', 'FloorAll'), ' этаж из ', convert = T)
 rent.data %&lt;&gt;% 
   mutate(PriceBySquare = Price / Area) %&gt;% 
-  mutate(City = str_trim(str_split(Address, ',', simplify = T)[, 3]))</code></pre>
+  mutate(City = str_trim(str_split(Address, ',', simplify = T)[, 3]))
+glimpse(rent.data)</code></pre>
+<pre><code>## Observations: 1,680
+## Variables: 8
+## $ Floor         &lt;int&gt; 3, 12, 2, 1, 9, 5, 5, 10, 5, 4, 8, 5, 4, 2, 3, 4...
+## $ FloorAll      &lt;int&gt; 3, 17, 9, 4, 9, 5, 5, 12, 5, 5, 9, 9, 9, 4, 5, 1...
+## $ Link          &lt;chr&gt; &quot;https://vidnoye.cian.ru/rent/flat/164398633/&quot;, ...
+## $ Area          &lt;dbl&gt; 30, 43, 35, 48, 37, 37, 37, 30, 34, 33, 32, 22, ...
+## $ Address       &lt;chr&gt; &quot;Московская область, м. Домодедовская, Ленинский...
+## $ Price         &lt;dbl&gt; 32900, 24000, 24000, 10000, 13000, 15000, 15000,...
+## $ PriceBySquare &lt;dbl&gt; 1096.6667, 558.1395, 685.7143, 208.3333, 351.351...
+## $ City          &lt;chr&gt; &quot;Ленинский район&quot;, &quot;Балашиха городской округ&quot;, &quot;...</code></pre>
 <p>Сохраним данные в <code>csv</code> формате</p>
 <pre class="r"><code>write_csv(rent.data, 'data/cian_rent.csv')</code></pre>
+</div>
+<div id="--" class="section level2">
+<h2>Данные по продаже</h2>
+<p>Сделаем аналогичные загрузку и преобразования для продажи квартир</p>
+<pre class="r"><code>search.url &lt;- 'https://www.cian.ru/cat.php?currency=2&amp;deal_type=sale&amp;engine_version=2&amp;maxprice=2000000&amp;minprice=1&amp;offer_type=flat&amp;p=page&amp;region=4593&amp;room1=1'
+pages.num &lt;- 60 # 60 страниц в выдаче
+pages &lt;- sample(1:pages.num, pages.num)
+result &lt;- list()
+count &lt;- 1
+delay &lt;- 0
+
+for (i in pages) {
+  url.page &lt;- str_replace(search.url, 'page', as.character(i))
+  cian &lt;- read_html(url.page)
+  
+  floor &lt;-
+    cian %&gt;%
+    html_nodes('.header--1ZTfS') %&gt;%
+    html_text() %&gt;%
+    str_trim()
+  
+  link &lt;-
+    cian %&gt;%
+    html_nodes('.cardLink--3KbME') %&gt;%
+    html_attr('href')
+  
+  area &lt;-
+    cian %&gt;%
+    html_nodes('.header--1WFWC') %&gt;%
+    html_text() %&gt;%
+    str_trim() %&gt;% 
+    gsub('[^[:digit:]]', '', .) %&gt;% 
+    str_trim() %&gt;% 
+    as.numeric()
+  
+  address &lt;-
+    cian %&gt;%
+    html_nodes('.address-path--12tl2') %&gt;%
+    html_text() %&gt;%
+    str_trim()
+  
+  price &lt;-
+    cian %&gt;%
+    html_nodes('.header--2lxlC') %&gt;%
+    html_text() %&gt;%
+    str_trim() %&gt;% 
+    gsub('[^[:digit:]]', '', .) %&gt;% 
+    str_trim() %&gt;% 
+    as.numeric()
+  
+  result[[i]] &lt;- tibble(Floor = floor, Link = link, Area = area, Address = address, Price = price)
+  Sys.sleep(delay)
+  
+  if (count == 1 | count %% 10 == 0 | count == pages.num)
+    print(paste('Rent, page', count, 'of', length(pages)))
+  count &lt;- count + 1
+}</code></pre>
+<pre><code>## [1] &quot;Rent, page 1 of 60&quot;
+## [1] &quot;Rent, page 10 of 60&quot;
+## [1] &quot;Rent, page 20 of 60&quot;
+## [1] &quot;Rent, page 30 of 60&quot;
+## [1] &quot;Rent, page 40 of 60&quot;
+## [1] &quot;Rent, page 50 of 60&quot;
+## [1] &quot;Rent, page 60 of 60&quot;</code></pre>
+<pre class="r"><code>sale.data &lt;- data.table::rbindlist(result)</code></pre>
+<p>Удалим неиспользуемые переменные</p>
+<pre class="r"><code>rm(area, cian, address, count, delay, floor, i, link, pages, pages.num, price, search.url, url.page, result)</code></pre>
+<p>Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, попробуем выделить город из полного адреса (исходим из того, что формат адреса - область, район, город), посчитаем цену за кв.метр.</p>
+<pre class="r"><code>sale.data &lt;- separate(sale.data, Floor, c('Floor', 'FloorAll'), ' этаж из ', convert = T)</code></pre>
+<pre><code>## Warning: Too few values at 1 locations: 1116</code></pre>
+<pre class="r"><code>sale.data %&lt;&gt;% 
+  mutate(PriceBySquare = Price / Area) %&gt;% 
+  mutate(City = str_trim(str_split(Address, ',', simplify = T)[, 3]))
+glimpse(sale.data)</code></pre>
+<pre><code>## Observations: 1,680
+## Variables: 8
+## $ Floor         &lt;chr&gt; &quot;2&quot;, &quot;17&quot;, &quot;4&quot;, &quot;1&quot;, &quot;1&quot;, &quot;2&quot;, &quot;2&quot;, &quot;2&quot;, &quot;2&quot;, &quot;3...
+## $ FloorAll      &lt;int&gt; 6, 17, 5, 1, 1, 3, 2, 3, 3, 5, 2, 2, 2, 2, 5, 5,...
+## $ Link          &lt;chr&gt; &quot;https://www.cian.ru/sale/flat/164334839/&quot;, &quot;htt...
+## $ Area          &lt;dbl&gt; 20, 40, 31, 38, 30, 15, 25, 34, 20, 13, 28, 20, ...
+## $ Address       &lt;chr&gt; &quot;Московская область, м. Мякинино, Красногорск го...
+## $ Price         &lt;dbl&gt; 161, 2, 125, 360, 550, 645, 800, 900, 1, 950, 95...
+## $ PriceBySquare &lt;dbl&gt; 8.05000000, 0.05000000, 4.03225806, 9.47368421, ...
+## $ City          &lt;chr&gt; &quot;Красногорск городской округ&quot;, &quot;Домодедово город...</code></pre>
+<p>Сохраним данные в <code>csv</code> формате</p>
+<pre class="r"><code>write_csv(sale.data, 'data/cian_sale.csv')</code></pre>
 </div>
 </div>
 
