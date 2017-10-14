@@ -165,7 +165,7 @@ for (i in pages) {
   Sys.sleep(delay)
   
   if (count == 1 | count %% 10 == 0 | count == pages.num)
-    print(paste('Rent, page', count, 'of', length(pages)))
+    print(paste('Sale, page', count, 'of', length(pages)))
   count <- count + 1
 }
 
