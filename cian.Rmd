@@ -21,6 +21,7 @@ knit: (function(inputFile, encoding) {
 Загрузим необходимые библиотеки
 
 ```{r, message=FALSE}
+library(data.table)
 library(tidyverse)
 library(rvest)
 library(stringr)
@@ -116,7 +117,7 @@ write_csv(rent.data, 'data/cian_rent.csv')
 
 ```{r}
 search.url <- 'https://www.cian.ru/cat.php?currency=2&deal_type=sale&engine_version=2&maxprice=2000000&minprice=1&offer_type=flat&p=page&region=4593&room1=1'
-pages.num <- 1 # 60 страниц в выдаче
+pages.num <- 60 # 60 страниц в выдаче
 pages <- sample(1:pages.num, pages.num)
 result <- list()
 count <- 1
@@ -182,6 +183,8 @@ rm(area, cian, address, count, delay, floor, i, link, pages, pages.num, price, s
 Сделаем некоторые преобразования над полученной табличкой. Разделим этажность на общую этажность дома и конкретный этаж, попробуем выделить город из полного адреса (исходим из того, что формат адреса - область, район, город), посчитаем цену за кв.метр.
 
 ```{r}
+sale.data %<>% 
+  filter(str_detect(sale.data$Floor, ' этаж из '))
 sale.data <- separate(sale.data, Floor, c('Floor', 'FloorAll'), ' этаж из ', convert = T)
 sale.data %<>% 
   mutate(PriceBySquare = Price / Area) %>% 
@@ -198,7 +201,7 @@ write_csv(sale.data, 'data/cian_sale.csv')
 ## Посмотрим статистику
 Посчитаем статистику по сгруппированным данным
 
-```{r}
+```{r fig.height=10, fig.width=8}
 rent <- rent.data %>%
   group_by(City) %>%
   summarise(
@@ -212,6 +215,53 @@ sale <- sale.data %>%
     Count = n(),
     MedianPrice = median(PriceBySquare)
   )
+
+rent %>%
+  filter(Count > 5) %>% 
+  arrange(desc(MedianPrice)) %>% 
+  mutate(City = reorder(City, MedianPrice)) %>%
+  ggplot(aes(City, MedianPrice)) +
+  geom_bar(stat = 'identity') +
+  coord_flip() +
+  labs(title = 'Аренда квартир в разрезе городов',
+       y = 'Медианная цена за кв.м.')
+
+sale %>%
+  filter(Count > 10) %>% 
+  arrange(desc(MedianPrice)) %>% 
+  mutate(City = reorder(City, MedianPrice)) %>%
+  ggplot(aes(City, MedianPrice)) +
+  geom_bar(stat = 'identity') +
+  coord_flip() +
+  labs(title = 'Продажа квартир в разрезе городов',
+       y = 'Медианная цена за кв.м.')
+```
+
+Посчитаем рейтинги
+
+```{r fig.height=10, fig.width=8}
+result <- as.data.table(merge(sale, rent, by = 'City', suffixes = c('_sale', '_rent')))
+result[, Rating := MedianPrice_rent / MedianPrice_sale]
+result <- arrange(result, -Rating)
+write_csv(result, 'data/cian_result.csv')
+#xlsx::write.xlsx(result, 'data/result.xlsx', row.names = F)
+
+result %>% 
+  filter(Count_sale > 1, Count_rent > 1) %>% 
+  select(City, Rating) %>% 
+  mutate(City = reorder(City, Rating)) %>%
+  ggplot(aes(City, Rating)) +
+  geom_bar(stat = 'identity') +
+  coord_flip() +
+  theme_linedraw() +
+  labs(title = 'Выгодные регионы для инвестирования')
+
+setDT(sale.data)
+sale.data <- merge(sale.data, select(result, City, MedianPrice_rent), by = 'City', all.x = T)
+sale.data[, Rating := MedianPrice_rent / PriceBySquare]
+sale.data <- arrange(sale.data, -Rating)
+write_csv(sale.data, 'data/cian_sale_rating')
+#xlsx::write.xlsx(sale.data, 'data/sale.data.xlsx', row.names = F)
 ```
 
 
@@ -223,11 +273,6 @@ sale <- sale.data %>%
 
 
 
-
-
-
-
-``
 
 
 
